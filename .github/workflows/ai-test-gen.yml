@@ -122,7 +122,7 @@ jobs:
           fi
 
           git commit -m "$COMMIT_MSG"
-          git push --force-with-lease "$REMOTE" "$BRANCH"
+          git push --force "$REMOTE" "$BRANCH"
 
       # ── 10. Open a PR in the test repo (skip if one already exists) ─────────
       - name: Open PR in test repo
