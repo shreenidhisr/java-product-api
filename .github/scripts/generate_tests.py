@@ -178,12 +178,11 @@ Decide whether to CREATE a new test file or UPDATE an existing one, then output 
 import time
 
 # Try models in order of free-tier quota (highest RPD first)
-# gemini-2.0-flash has 0 free quota — excluded
 CANDIDATE_MODELS = [
-    "gemini-3.1-flash-lite",      # 15 RPM / 500 RPD free
-    "gemini-2.5-flash-lite",      # 10 RPM / 20 RPD free
-    "gemini-2.5-flash",           # 5 RPM / 20 RPD free
-    "gemini-3-flash",             # 5 RPM / 20 RPD free
+    "gemini-3.1-flash-lite-preview",  # 15 RPM / 500 RPD free
+    "gemini-2.5-flash-lite",          # 10 RPM / 20 RPD free
+    "gemini-2.5-flash",               # 5 RPM / 20 RPD free
+    "gemini-flash-lite-latest",       # alias for latest flash lite
 ]
 
 print("\nCalling Gemini API...")
