@@ -99,13 +99,15 @@ jobs:
           BRANCH="ai/pr-${PR_NUMBER}"
           REMOTE="https://x-access-token:${TEST_REPO_TOKEN}@github.com/${TEST_REPO}.git"
 
-          # Always fetch main so origin/main is available locally
-          git fetch origin main
+          # Detect the default branch of the test repo (main or master)
+          DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+          echo "Test repo default branch: $DEFAULT_BRANCH"
+          git fetch origin "$DEFAULT_BRANCH"
 
-          # If the branch already exists remotely, reset it to main (clean slate each run)
+          # If the AI branch already exists remotely, reset it cleanly to the default branch
           if git ls-remote --exit-code --heads "$REMOTE" "$BRANCH" > /dev/null 2>&1; then
-            echo "Branch $BRANCH already exists — resetting to latest main."
-            git checkout -B "$BRANCH" origin/main
+            echo "Branch $BRANCH already exists — resetting to $DEFAULT_BRANCH."
+            git checkout -B "$BRANCH" "origin/$DEFAULT_BRANCH"
           else
             git checkout -b "$BRANCH"
           fi
@@ -154,10 +156,11 @@ jobs:
             ACTION_NOTE="**Created** new test file \`tests/${TEST_FILE_NAME}\`."
           fi
 
+          DEFAULT_BRANCH=$(GH_TOKEN="$TEST_REPO_TOKEN" gh repo view "$TEST_REPO" --json defaultBranchRef --jq '.defaultBranchRef.name')
           GH_TOKEN="$TEST_REPO_TOKEN" gh pr create \
             --repo "$TEST_REPO" \
             --head "$BRANCH" \
-            --base main \
+            --base "$DEFAULT_BRANCH" \
             --title "test(ai): auto-generated tests for ${MAIN_REPO}#${PR_NUMBER}" \
             --body "$(cat <<EOF
           ## AI-Generated Tests
