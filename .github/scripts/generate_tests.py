@@ -18,7 +18,7 @@ import pathlib
 import re
 import sys
 
-import anthropic
+import google.generativeai as genai
 import numpy as np
 
 TOP_K         = 5
@@ -172,19 +172,22 @@ USER_PROMPT = f"""## PR #{PR_NUMBER}: {PR_TITLE}
 Decide whether to CREATE a new test file or UPDATE an existing one, then output the result.
 """
 
-# ── 5. Call Claude ─────────────────────────────────────────────────────────────
+# ── 5. Call Gemini ─────────────────────────────────────────────────────────────
 
-print("\nCalling Claude API...")
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+print("\nCalling Gemini API...")
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-message = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=4096,
-    system=SYSTEM_PROMPT,
-    messages=[{"role": "user", "content": USER_PROMPT}],
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=SYSTEM_PROMPT,
+    generation_config=genai.GenerationConfig(
+        temperature=0.2,
+        max_output_tokens=4096,
+    ),
 )
 
-raw_response = message.content[0].text.strip()
+response = model.generate_content(USER_PROMPT)
+raw_response = response.text.strip()
 print(f"Claude response (first 300 chars):\n{raw_response[:300]}")
 
 # Strip accidental markdown fences

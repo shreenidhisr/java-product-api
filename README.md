@@ -88,11 +88,11 @@ The workflow needs write access to the test repo to push branches and open PRs.
 
 Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
 
-| Secret name        | Value                                          |
-|--------------------|------------------------------------------------|
-| `ANTHROPIC_API_KEY`| Your Anthropic API key (from console.anthropic.com) |
-| `TEST_REPO_TOKEN`  | The PAT you created in Step 2                  |
-| `TEST_REPO`        | `your-org/pytest-product-tests`                |
+| Secret name      | Value                                                        |
+|------------------|--------------------------------------------------------------|
+| `GEMINI_API_KEY` | Your Gemini API key (free — see below)                       |
+| `TEST_REPO_TOKEN`| The PAT you created in Step 2                                |
+| `TEST_REPO`      | `your-org/pytest-product-tests`                              |
 
 ### Step 4 — Test it end-to-end
 
@@ -131,14 +131,23 @@ java-product-api/
 
 ---
 
-## How the Claude Prompt Works
+## Getting a Free Gemini API Key
 
-The script in `.github/scripts/generate_tests.py` sends Claude:
+1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click **Create API key** — no credit card required
+4. Copy the key (starts with `AIza...`)
+
+Free tier limits: **15 requests/min**, **1 million tokens/day** — more than enough for a team doing dozens of PRs per day.
+
+## How the Gemini Prompt Works
+
+The script in `.github/scripts/generate_tests.py` sends Gemini 1.5 Flash:
 
 - **System prompt**: Instructions to act as a QA engineer, follow the existing test style, use the right fixtures, cover new fields/endpoints thoroughly, and skip infrastructure-only changes
-- **User message**: The full PR diff + the content of all existing `test_*.py` files as style examples
+- **User message**: The PR diff + top-5 most semantically similar test functions (retrieved via embedding index — not all tests)
 
-Claude responds with a JSON object containing the filename and full test code. The workflow then commits that file to the test repo.
+Gemini responds with a JSON object containing the filename and full test code. The workflow then commits that file to the test repo.
 
 ---
 
