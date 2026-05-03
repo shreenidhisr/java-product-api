@@ -1,0 +1,183 @@
+name: AI Test Generation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  generate-tests:
+    name: Generate pytest tests for PR changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      # ── 1. Checkout the Java app repo ──────────────────────────────────────
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. Set up Python ───────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install anthropic requests sentence-transformers numpy
+
+      # ── 3. Clone the test repo ─────────────────────────────────────────────
+      - name: Clone test repo
+        env:
+          TEST_REPO_TOKEN: ${{ secrets.TEST_REPO_TOKEN }}
+          TEST_REPO: ${{ secrets.TEST_REPO }}
+        run: |
+          git clone "https://x-access-token:${TEST_REPO_TOKEN}@github.com/${TEST_REPO}.git" /tmp/test-repo
+
+      # ── 4. Compute cache key from test file contents ───────────────────────
+      - name: Compute test index cache key
+        id: cache-key
+        run: |
+          # Hash the sorted contents of all test_*.py files; any change invalidates the cache
+          KEY=$(find /tmp/test-repo/tests -name 'test_*.py' | sort | xargs sha256sum 2>/dev/null | sha256sum | awk '{print $1}')
+          echo "key=test-index-${KEY}" >> "$GITHUB_OUTPUT"
+          echo "Cache key: test-index-${KEY}"
+
+      # ── 5. Restore embedding index from cache ──────────────────────────────
+      - name: Restore test index cache
+        id: restore-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/test-index
+          key: ${{ steps.cache-key.outputs.key }}
+
+      # ── 6. Build index on cache miss ───────────────────────────────────────
+      - name: Build semantic index
+        if: steps.restore-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache miss — building embedding index from test files..."
+          python3 ${{ github.workspace }}/.github/scripts/build_index.py
+
+      # ── 7. Save index to cache ─────────────────────────────────────────────
+      - name: Save test index cache
+        if: steps.restore-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/test-index
+          key: ${{ steps.cache-key.outputs.key }}
+
+      # ── 8. Call Claude with semantic context and generate test file ─────────
+      - name: Generate tests with Claude
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > /tmp/pr.diff
+          python3 ${{ github.workspace }}/.github/scripts/generate_tests.py < /tmp/pr.diff
+
+      # ── 9. Commit the generated test to the test repo ──────────────────────
+      - name: Push generated test to test repo
+        if: steps.generate.outputs.test_file_name != ''
+        env:
+          TEST_REPO_TOKEN: ${{ secrets.TEST_REPO_TOKEN }}
+          TEST_REPO: ${{ secrets.TEST_REPO }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          TEST_FILE_NAME: ${{ steps.generate.outputs.test_file_name }}
+          TEST_ACTION: ${{ steps.generate.outputs.test_action }}
+        run: |
+          cd /tmp/test-repo
+
+          git config user.email "ai-test-bot@github-actions"
+          git config user.name "AI Test Bot"
+
+          BRANCH="ai/pr-${PR_NUMBER}"
+          REMOTE="https://x-access-token:${TEST_REPO_TOKEN}@github.com/${TEST_REPO}.git"
+
+          # If the branch already exists remotely (PR was updated), reset rather than re-create
+          if git ls-remote --exit-code --heads "$REMOTE" "$BRANCH" > /dev/null 2>&1; then
+            echo "Branch $BRANCH already exists — resetting to latest main."
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git reset --soft origin/main
+          else
+            git checkout -b "$BRANCH"
+          fi
+
+          cp "/tmp/generated_test.py" "tests/${TEST_FILE_NAME}"
+          git add "tests/${TEST_FILE_NAME}"
+
+          if [ "$TEST_ACTION" = "update" ]; then
+            COMMIT_MSG="test(ai): update existing tests for PR #${PR_NUMBER} - ${PR_TITLE}"
+          else
+            COMMIT_MSG="test(ai): auto-generate tests for PR #${PR_NUMBER} - ${PR_TITLE}"
+          fi
+
+          git commit -m "$COMMIT_MSG"
+          git push --force-with-lease "$REMOTE" "$BRANCH"
+
+      # ── 10. Open a PR in the test repo (skip if one already exists) ─────────
+      - name: Open PR in test repo
+        if: steps.generate.outputs.test_file_name != ''
+        env:
+          TEST_REPO_TOKEN: ${{ secrets.TEST_REPO_TOKEN }}
+          TEST_REPO: ${{ secrets.TEST_REPO }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          MAIN_REPO: ${{ github.repository }}
+          TEST_FILE_NAME: ${{ steps.generate.outputs.test_file_name }}
+          TEST_ACTION: ${{ steps.generate.outputs.test_action }}
+        run: |
+          BRANCH="ai/pr-${PR_NUMBER}"
+
+          EXISTING_PR=$(GH_TOKEN="$TEST_REPO_TOKEN" gh pr list \
+            --repo "$TEST_REPO" \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #${EXISTING_PR} already exists — branch was force-pushed with updates."
+            exit 0
+          fi
+
+          if [ "$TEST_ACTION" = "update" ]; then
+            ACTION_NOTE="**Updated** existing test file \`tests/${TEST_FILE_NAME}\` with new coverage."
+          else
+            ACTION_NOTE="**Created** new test file \`tests/${TEST_FILE_NAME}\`."
+          fi
+
+          GH_TOKEN="$TEST_REPO_TOKEN" gh pr create \
+            --repo "$TEST_REPO" \
+            --head "$BRANCH" \
+            --base main \
+            --title "test(ai): auto-generated tests for ${MAIN_REPO}#${PR_NUMBER}" \
+            --body "$(cat <<EOF
+          ## AI-Generated Tests
+
+          Auto-generated by Claude based on changes in **${MAIN_REPO}#${PR_NUMBER}**: *${PR_TITLE}*
+
+          ${ACTION_NOTE}
+
+          **Context retrieved via:** semantic search (top-5 most similar test functions)
+
+          ### Review Checklist
+          - [ ] Tests cover the new behaviour introduced in the PR
+          - [ ] Assertions are correct and meaningful
+          - [ ] Tests are independent and clean up after themselves
+          - [ ] No hardcoded IDs or fragile assumptions
+
+          > These tests were generated by an AI. Please review before merging.
+          EOF
+          )"
+
+      - name: No tests generated
+        if: steps.generate.outputs.test_file_name == ''
+        run: |
+          echo "Claude determined no new tests were needed for this PR."
