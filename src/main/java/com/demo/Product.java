@@ -15,6 +15,8 @@ public class Product {
     @Positive(message = "Price must be positive")
     private Double price;
 
+    private String description;
+
     public Product() {}
 
     public Product(Long id, String name, Double price) {
@@ -31,4 +33,7 @@ public class Product {
 
     public Double getPrice() { return price; }
     public void setPrice(Double price) { this.price = price; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 }
