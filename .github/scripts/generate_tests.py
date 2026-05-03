@@ -177,8 +177,14 @@ Decide whether to CREATE a new test file or UPDATE an existing one, then output 
 
 import time
 
-# Try models in order — first available free-tier model wins
-CANDIDATE_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"]
+# Try models in order of free-tier quota (highest RPD first)
+# gemini-2.0-flash has 0 free quota — excluded
+CANDIDATE_MODELS = [
+    "gemini-3.1-flash-lite",      # 15 RPM / 500 RPD free
+    "gemini-2.5-flash-lite",      # 10 RPM / 20 RPD free
+    "gemini-2.5-flash",           # 5 RPM / 20 RPD free
+    "gemini-3-flash",             # 5 RPM / 20 RPD free
+]
 
 print("\nCalling Gemini API...")
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
