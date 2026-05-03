@@ -80,7 +80,60 @@ jobs:
           gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} > /tmp/pr.diff
           python3 ${{ github.workspace }}/.github/scripts/generate_tests.py < /tmp/pr.diff
 
-      # ── 9. Commit the generated test to the test repo ──────────────────────
+      # ── 9. Set up JDK to build the Java API from this PR branch ───────────
+      - name: Set up JDK 17
+        if: steps.generate.outputs.test_file_name != ''
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: maven
+
+      # ── 10. Build the Spring Boot jar from the PR branch code ──────────────
+      - name: Build Java API (PR branch)
+        if: steps.generate.outputs.test_file_name != ''
+        run: mvn -q package -DskipTests -f ${{ github.workspace }}/pom.xml
+
+      # ── 11. Start the API in the background ────────────────────────────────
+      - name: Start Java API
+        if: steps.generate.outputs.test_file_name != ''
+        run: |
+          java -jar ${{ github.workspace }}/target/*.jar &
+          echo "API_PID=$!" >> "$GITHUB_ENV"
+
+      # ── 12. Wait for the API to be healthy ─────────────────────────────────
+      - name: Wait for API to be healthy
+        if: steps.generate.outputs.test_file_name != ''
+        run: |
+          echo "Waiting for http://localhost:8080/products ..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/products > /dev/null 2>&1; then
+              echo "API is ready after $i attempt(s)"
+              exit 0
+            fi
+            echo "  attempt $i/30 — sleeping 2s"
+            sleep 2
+          done
+          echo "ERROR: API did not start in 60s"
+          exit 1
+
+      # ── 13. Install pytest deps and run generated tests against PR code ─────
+      - name: Run generated tests against PR branch code
+        if: steps.generate.outputs.test_file_name != ''
+        env:
+          TEST_FILE_NAME: ${{ steps.generate.outputs.test_file_name }}
+          BASE_URL: http://localhost:8080
+        run: |
+          pip install -r /tmp/test-repo/requirements.txt
+
+          # Inject the generated test into the test repo layout so conftest.py is found
+          cp /tmp/generated_test.py "/tmp/test-repo/tests/${TEST_FILE_NAME}"
+
+          echo "Running pytest against PR branch API..."
+          cd /tmp/test-repo
+          pytest tests/ -v --tb=short
+
+      # ── 15. Commit the generated test to the test repo ─────────────────────
       - name: Push generated test to test repo
         if: steps.generate.outputs.test_file_name != ''
         env:
@@ -124,7 +177,7 @@ jobs:
           git commit -m "$COMMIT_MSG"
           git push --force "$REMOTE" "$BRANCH"
 
-      # ── 10. Open a PR in the test repo (skip if one already exists) ─────────
+      # ── 16. Open a PR in the test repo (skip if one already exists) ─────────
       - name: Open PR in test repo
         if: steps.generate.outputs.test_file_name != ''
         env:
