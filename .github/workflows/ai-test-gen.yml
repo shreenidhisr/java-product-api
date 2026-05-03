@@ -99,12 +99,13 @@ jobs:
           BRANCH="ai/pr-${PR_NUMBER}"
           REMOTE="https://x-access-token:${TEST_REPO_TOKEN}@github.com/${TEST_REPO}.git"
 
-          # If the branch already exists remotely (PR was updated), reset rather than re-create
+          # Always fetch main so origin/main is available locally
+          git fetch origin main
+
+          # If the branch already exists remotely, reset it to main (clean slate each run)
           if git ls-remote --exit-code --heads "$REMOTE" "$BRANCH" > /dev/null 2>&1; then
             echo "Branch $BRANCH already exists — resetting to latest main."
-            git fetch origin "$BRANCH"
-            git checkout "$BRANCH"
-            git reset --soft origin/main
+            git checkout -B "$BRANCH" origin/main
           else
             git checkout -b "$BRANCH"
           fi
