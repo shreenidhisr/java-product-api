@@ -132,6 +132,8 @@ Rules:
    updated content of that existing file (same filename) — do NOT create a duplicate file.
 9. If the diff is a refactor with no observable API change, output SKIP.
 10. If the diff is infrastructure/config only, output SKIP.
+11. CRITICAL: Never use `self` as a parameter on standalone functions outside a class. Every test
+    function outside a class must only take fixture names as parameters (e.g. `def test_foo(base_url):`).
 
 Output format — respond with ONLY a JSON object, no markdown fences:
 {
