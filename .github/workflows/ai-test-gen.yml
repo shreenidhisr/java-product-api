@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: pip install google-generativeai requests sentence-transformers numpy
+        run: pip install google-genai requests sentence-transformers numpy
 
       # ── 3. Clone the test repo ─────────────────────────────────────────────
       - name: Clone test repo

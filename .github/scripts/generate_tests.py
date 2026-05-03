@@ -18,7 +18,8 @@ import pathlib
 import re
 import sys
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 import numpy as np
 
 TOP_K         = 5
@@ -175,18 +176,18 @@ Decide whether to CREATE a new test file or UPDATE an existing one, then output 
 # ── 5. Call Gemini ─────────────────────────────────────────────────────────────
 
 print("\nCalling Gemini API...")
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_PROMPT,
-    generation_config=genai.GenerationConfig(
+response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents=USER_PROMPT,
+    config=genai_types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
         temperature=0.2,
         max_output_tokens=4096,
     ),
 )
 
-response = model.generate_content(USER_PROMPT)
 raw_response = response.text.strip()
 print(f"Claude response (first 300 chars):\n{raw_response[:300]}")
 
