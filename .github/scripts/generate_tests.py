@@ -175,20 +175,49 @@ Decide whether to CREATE a new test file or UPDATE an existing one, then output 
 
 # ── 5. Call Gemini ─────────────────────────────────────────────────────────────
 
+import time
+
+# Try models in order — first available free-tier model wins
+CANDIDATE_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"]
+
 print("\nCalling Gemini API...")
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-response = client.models.generate_content(
-    model="gemini-2.0-flash",
-    contents=USER_PROMPT,
-    config=genai_types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        temperature=0.2,
-        max_output_tokens=4096,
-    ),
-)
+raw_response = None
+for model_id in CANDIDATE_MODELS:
+    for attempt in range(1, 4):  # up to 3 retries per model
+        try:
+            print(f"  Trying model={model_id}, attempt={attempt}...")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=USER_PROMPT,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.2,
+                    max_output_tokens=4096,
+                ),
+            )
+            raw_response = response.text.strip()
+            print(f"  Success with {model_id}")
+            break
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                wait = 20 * attempt
+                print(f"  Rate limited on {model_id} — waiting {wait}s before retry...")
+                time.sleep(wait)
+            elif "404" in err_str or "not found" in err_str.lower():
+                print(f"  Model {model_id} not available, trying next...")
+                break  # skip to next model
+            else:
+                print(f"  Unexpected error: {e}", file=sys.stderr)
+                sys.exit(1)
+    if raw_response:
+        break
 
-raw_response = response.text.strip()
+if not raw_response:
+    print("ERROR: All Gemini models exhausted. Check your API key at https://aistudio.google.com/apikey", file=sys.stderr)
+    sys.exit(1)
 print(f"Claude response (first 300 chars):\n{raw_response[:300]}")
 
 # Strip accidental markdown fences
