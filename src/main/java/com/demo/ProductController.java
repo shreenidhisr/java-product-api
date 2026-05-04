@@ -49,4 +49,9 @@ public class ProductController {
         }
         return ResponseEntity.notFound().build();
     }
+
+    @GetMapping("/products")
+    public ResponseEntity<List<String>> products() {
+        return ResponseEntity.status(HttpStatus.OK).body(productService.getAllProducts());
+    }
 }

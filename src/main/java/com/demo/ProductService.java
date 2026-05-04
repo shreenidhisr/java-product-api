@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductService {
@@ -38,5 +39,9 @@ public class ProductService {
 
     public boolean delete(Long id) {
         return store.remove(id) != null;
+    }
+
+    public List<String> getAllProducts() {
+        return store.values().stream().map(Product::getName).toList();
     }
 }
