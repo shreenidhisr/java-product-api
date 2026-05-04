@@ -128,8 +128,9 @@ Rules:
 5. Every assertion must be meaningful — test actual values, not just status codes.
 6. If the diff adds a new field, test: creating with it, reading it back, updating it, and omitting it.
 7. If the diff adds a new endpoint or route, test: happy path, 404, and validation errors.
-8. If the diff modifies an existing field or endpoint that already has a test file, return the FULL
-   updated content of that existing file (same filename) — do NOT create a duplicate file.
+8. If an existing test file is provided below (under "EXISTING FILE CONTENT"), you MUST include
+   ALL of its tests verbatim in your output — do NOT remove, rename, or rewrite any existing test.
+   Only APPEND new test classes or functions. The output must be the existing content PLUS new tests.
 9. If the diff is a refactor with no observable API change, output SKIP.
 10. If the diff is infrastructure/config only, output SKIP.
 11. CRITICAL: Never use `self` as a parameter on standalone functions outside a class. Every test
@@ -163,6 +164,20 @@ if top_chunks:
 else:
     examples_section = "No existing tests found — write idiomatic pytest tests using requests.\n"
 
+# If there is a single obvious existing file to update, read its full content so the
+# AI can preserve every test in it (not just the top-K retrieved chunks).
+TEST_REPO_DIR = pathlib.Path("/tmp/test-repo/tests")
+existing_file_section = ""
+if len(all_filenames) == 1:
+    existing_path = TEST_REPO_DIR / all_filenames[0]
+    if existing_path.exists():
+        existing_file_section = f"""
+### EXISTING FILE CONTENT — `{all_filenames[0]}` (you MUST keep ALL these tests)
+```python
+{existing_path.read_text()}
+```
+"""
+
 USER_PROMPT = f"""## PR #{PR_NUMBER}: {PR_TITLE}
 
 ### Git Diff
@@ -172,7 +187,7 @@ USER_PROMPT = f"""## PR #{PR_NUMBER}: {PR_TITLE}
 
 ### All existing test filenames (for overlap / update detection)
 {all_filenames if all_filenames else "None"}
-
+{existing_file_section}
 ### Example tests (top-{TOP_K} most semantically similar to this diff)
 {examples_section}
 Decide whether to CREATE a new test file or UPDATE an existing one, then output the result.
