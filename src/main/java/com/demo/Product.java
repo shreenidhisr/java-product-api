@@ -17,6 +17,8 @@ public class Product {
 
     private String description;
 
+    private String company;
+
     public Product() {}
 
     public Product(Long id, String name, Double price) {
@@ -36,4 +38,12 @@ public class Product {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public String getCompany() {
+        return company;
+    }
+
+    public void setCompany(String company) {
+        this.company = company;
+    }
 }
