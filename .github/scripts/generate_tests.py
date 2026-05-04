@@ -18,7 +18,8 @@ import pathlib
 import re
 import sys
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 import numpy as np
 
 TOP_K         = 5
@@ -131,6 +132,8 @@ Rules:
    updated content of that existing file (same filename) — do NOT create a duplicate file.
 9. If the diff is a refactor with no observable API change, output SKIP.
 10. If the diff is infrastructure/config only, output SKIP.
+11. CRITICAL: Never use `self` as a parameter on standalone functions outside a class. Every test
+    function outside a class must only take fixture names as parameters (e.g. `def test_foo(base_url):`).
 
 Output format — respond with ONLY a JSON object, no markdown fences:
 {
@@ -174,20 +177,54 @@ Decide whether to CREATE a new test file or UPDATE an existing one, then output 
 
 # ── 5. Call Gemini ─────────────────────────────────────────────────────────────
 
+import time
+
+# Try models in order of free-tier quota (highest RPD first)
+CANDIDATE_MODELS = [
+    "gemini-3.1-flash-lite-preview",  # 15 RPM / 500 RPD free
+    "gemini-2.5-flash-lite",          # 10 RPM / 20 RPD free
+    "gemini-2.5-flash",               # 5 RPM / 20 RPD free
+    "gemini-flash-lite-latest",       # alias for latest flash lite
+]
+
 print("\nCalling Gemini API...")
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_PROMPT,
-    generation_config=genai.GenerationConfig(
-        temperature=0.2,
-        max_output_tokens=4096,
-    ),
-)
+raw_response = None
+for model_id in CANDIDATE_MODELS:
+    for attempt in range(1, 4):  # up to 3 retries per model
+        try:
+            print(f"  Trying model={model_id}, attempt={attempt}...")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=USER_PROMPT,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.2,
+                    max_output_tokens=4096,
+                ),
+            )
+            raw_response = response.text.strip()
+            print(f"  Success with {model_id}")
+            break
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                wait = 20 * attempt
+                print(f"  Rate limited on {model_id} — waiting {wait}s before retry...")
+                time.sleep(wait)
+            elif "404" in err_str or "not found" in err_str.lower():
+                print(f"  Model {model_id} not available, trying next...")
+                break  # skip to next model
+            else:
+                print(f"  Unexpected error: {e}", file=sys.stderr)
+                sys.exit(1)
+    if raw_response:
+        break
 
-response = model.generate_content(USER_PROMPT)
-raw_response = response.text.strip()
+if not raw_response:
+    print("ERROR: All Gemini models exhausted. Check your API key at https://aistudio.google.com/apikey", file=sys.stderr)
+    sys.exit(1)
 print(f"Claude response (first 300 chars):\n{raw_response[:300]}")
 
 # Strip accidental markdown fences
