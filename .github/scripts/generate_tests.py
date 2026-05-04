@@ -134,6 +134,9 @@ Rules:
 10. If the diff is infrastructure/config only, output SKIP.
 11. CRITICAL: Never use `self` as a parameter on standalone functions outside a class. Every test
     function outside a class must only take fixture names as parameters (e.g. `def test_foo(base_url):`).
+12. CRITICAL: `cleanup_products` is a LIST, not a callable. Never write `cleanup_products(id)`.
+    Always prefer the `create_product` fixture which handles cleanup automatically. If you must
+    create a product manually, register it with `cleanup_products.append(data["id"])`.
 
 Output format — respond with ONLY a JSON object, no markdown fences:
 {
